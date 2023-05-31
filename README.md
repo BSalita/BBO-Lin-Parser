@@ -10,3 +10,6 @@ Project to parse BBO lin files producing bidding sequence tables. BBO is an onli
 
 # To run:
     jupyter notebook bbo_parse_lin_files.ipynb
+
+## Related Projects
+For a list of related projects see: https://github.com/BSalita/BridgeStats
