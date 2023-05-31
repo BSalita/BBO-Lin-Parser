@@ -1,5 +1,5 @@
 # BBO-Lin-Parser
-Project to parse BBO lin files producing a table of their bidding sequences. BBO is an online contract duplicate bridge gaming website. This project is not supported. Not end user friendly. Requires python programming knowledge.
+Project to parse BBO lin files producing a table of the bidding sequences they contain. BBO is an online contract duplicate bridge gaming website. This project is not supported. Not end user friendly. Requires python programming knowledge.
 
 The purpose of the project is create a baseline of BBO's bidding sequences. The baseline can serve as a guide for other bidding systems or be used for statistical analysis.
 
