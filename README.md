@@ -5,4 +5,4 @@ Project to parse BBO lin files producing bidding sequence tables. BBO is an onli
     pip install -r requirements.txt
 
 # To run:
-    python BBO-Downloader.py
+    jupyter notebook bbo_parse_lin_files.ipynb
