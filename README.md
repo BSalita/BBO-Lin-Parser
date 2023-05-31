@@ -7,6 +7,8 @@ The project's author believes this discrete rules approach, given the additional
 
 The project consists of a jupyter notebook (python) file. The notebook reads a glob of .lin files, wrangles their bidding announcements, creates bbo_bidding_sequences_table.py which is a table of bidding sequences and their rules. About 1M bidding sequences are produced.
 
+The curent status is proof-of-concept stage.  Months of work are needed to curate data along with development of coverage and validation software.
+
 # Dependencies:
 - Python 3.8+
 - At least 64GB of memory.
