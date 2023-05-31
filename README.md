@@ -21,6 +21,7 @@ This project is not affiliated with or sponsered by BBO.
     pip install -r requirements.txt
 
 # To run:
+Install jupyter notebook using pip, conda or mini-conda. Do a search for the installation instructions.
     jupyter notebook bbo_parse_lin_files.ipynb
 
 ## Related Projects
