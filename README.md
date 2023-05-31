@@ -11,7 +11,7 @@ BBO .lin files can be downloaded using https://github.com/BSalita/BBO-Downloader
 
 The curent status is proof-of-concept stage.  Months of work are needed to curate data along with development of coverage and validation software.
 
-This project is not affiliated with or sponsered by BBO.
+This project is not affiliated with or sponsored by BBO.
 
 # Dependencies:
 - Python 3.8+
