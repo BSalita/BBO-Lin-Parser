@@ -9,6 +9,8 @@ The project consists of a jupyter notebook (python) file. The notebook reads a g
 
 The curent status is proof-of-concept stage.  Months of work are needed to curate data along with development of coverage and validation software.
 
+This project is not affiliated with or sponsered by BBO.
+
 # Dependencies:
 - Python 3.8+
 - At least 64GB of memory.
