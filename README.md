@@ -11,7 +11,7 @@ BBO .lin files can be downloaded using https://github.com/BSalita/BBO-Downloader
 
 The curent status is proof-of-concept stage.  Months of work are needed to curate data along with development of coverage and validation software.
 
-This project is not affiliated with or sponsered by BBO.
+This project is not affiliated with or sponsored by BBO.
 
 # Dependencies:
 - Python 3.8+
@@ -21,6 +21,8 @@ This project is not affiliated with or sponsered by BBO.
     pip install -r requirements.txt
 
 # To run:
+Install jupyter notebook using pip, conda or mini-conda. Do a search for the installation instructions.
+
     jupyter notebook bbo_parse_lin_files.ipynb
 
 ## Related Projects
