@@ -1,7 +1,7 @@
 # BBO-Lin-Parser
 Project to read and parse a glob of BBO lin files to produce a table of their embedded bidding sequences. BBO is an online contract duplicate bridge gaming website. This project is unsupported and not end user friendly. Requires python programming knowledge.
 
-The purpose of the project is create a baseline of BBO's bidding rules. The baseline can serve as a guide for creating a baseline for other bidding systems, for statistical analysis, or creation of bridge bidding robots.
+The purpose of the project is create a baseline of the bidding rules embedded in lin files (https://www.bridgebase.com/doc/gib_descriptions.php). The baseline can serve as a guide for creating a baseline for other bidding systems, for statistical analysis, or creation of bridge bidding robots.
 
 The project's author believes this discrete rules approach, given the additional work of curation of data, will result in super-human bridge bidding abilities. It is unclear whether rules alone are sufficient for super-human abilities or must be supplemented by a neural network to best intuit optimal bids.
 
@@ -26,7 +26,7 @@ Install jupyter notebook using pip, conda or mini-conda. Do a search for the ins
     jupyter notebook bbo_parse_lin_files.ipynb
 
 ## Explanation of bbo_bidding_sequences_table.py file.
-This project's main goal is to implement the conversion of bid announcements into a form compatible with pandas eval function. The result of the conversion is the bbo_bidding_sequences_table.py file.
+This project's main goal is to implement the conversion of lin file bid announcements, which are based on https://www.bridgebase.com/doc/gib_descriptions.php, into a form compatible with pandas eval function. The result of the conversion is the bbo_bidding_sequences_table.py file.
 
 The file named bbo_bidding_sequences_table.py contains 500K+ bidding tuples. e.g. Dealer opens 1N:
 
