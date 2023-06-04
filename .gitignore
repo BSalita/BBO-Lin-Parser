@@ -2,4 +2,3 @@ __pycache__/
 .env
 .ipynb_checkpoints/
 .vscode/
-BBO_Bidding_Sequences.xlsx
