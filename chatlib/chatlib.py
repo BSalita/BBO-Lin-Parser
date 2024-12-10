@@ -148,449 +148,320 @@ def json_dict_to_types(json_dict,root_name,path):
     return dfs
 
 
+# todo: finish converting from pandas to polars. hitch is that pd.json_normalize() is pandas only.
 def create_club_dfs(acbl_number,event_url):
     data = acbllib.get_club_results_details_data(event_url)
     if data is None:
         return None
     dfs = {}
-    dfs['event'] = pd.json_normalize(data,max_level=0)
-    for k,v in dfs['event'].items():
+    event_df = pd.json_normalize(data,max_level=0) # todo: convert to polars
+    dfs['event'] = pl.from_pandas(event_df)
+    for k,v in event_df.items():
         if isinstance(v[0],dict) or isinstance(v[0],list):
             assert k not in dfs, k
-            df = pd.json_normalize(data,max_level=0)[k]
+            df = pd.json_normalize(data,max_level=0)[k] # todo: convert to polars
             # must test whether df is all scalers. Very difficult to debug.
             if isinstance(v[0],dict) and not any([isinstance(vv,dict) or isinstance(vv,list) for kk,vv in df[0].items()]):
-                dfs[k] = pd.DataFrame.from_records(df[0],index=[0]) # must use from_records to avoid 'all values are scaler must specify index' error
+                dfs[k] = pl.from_pandas(pd.DataFrame.from_records(df[0],index=[0])) # must use from_records to avoid 'all values are scaler must specify index' error
             else:
-                dfs[k] = pd.DataFrame.from_records(df[0])
-            dfs['event'].drop(columns=[k],inplace=True)
+                dfs[k] = pl.from_pandas(pd.DataFrame.from_records(df[0]).astype('string')) # warning: needed astype('string') to avoid int error
+            event_df.drop(columns=[k],inplace=True)
             #if all(isinstance(kk,int) or (isinstance(kk,str) and kk.isnumeric()) for kk,vv in v.items()):
-    dfs['hand_records'] = pd.json_normalize(data,['sessions','hand_records'])
-    dfs['strat_place'] = pd.json_normalize(data,['sessions','sections','pair_summaries','strat_place'])
-    dfs['sections'] = pd.json_normalize(data,['sessions','sections'])
-    dfs['boards'] = pd.json_normalize(data,['sessions','sections','boards'])
-    dfs['pair_summaries'] = pd.json_normalize(data,['sessions','sections','pair_summaries'])
-    dfs['players'] = pd.json_normalize(data,['sessions','sections','pair_summaries','players'])
-    dfs['board_results'] = pd.json_normalize(data,['sessions','sections','boards','board_results'])
+    dfs['hand_records'] = pl.from_pandas(pd.json_normalize(data,['sessions','hand_records']))
+    dfs['strat_place'] = pl.from_pandas(pd.json_normalize(data,['sessions','sections','pair_summaries','strat_place']))
+    dfs['sections'] = pl.from_pandas(pd.json_normalize(data,['sessions','sections']))
+    dfs['boards'] = pl.from_pandas(pd.json_normalize(data,['sessions','sections','boards']))
+    dfs['pair_summaries'] = pl.from_pandas(pd.json_normalize(data,['sessions','sections','pair_summaries']))
+    dfs['players'] = pl.from_pandas(pd.json_normalize(data,['sessions','sections','pair_summaries','players']))
+    dfs['board_results'] = pl.from_pandas(pd.json_normalize(data,['sessions','sections','boards','board_results']))
     return dfs
 
 
-def merge_clean_augment_tournament_dfs(dfs, dfs_results, acbl_api_key, acbl_number):
+def merge_clean_augment_club_dfs(dfs, sd_cache_d, acbl_number):  # todo: acbl_number obsolete?
 
-    print_to_log_info('dfs keys:',dfs.keys())
-
-    df = pd.DataFrame({k:[v] for k,v in dfs.items() if not (isinstance(v,dict) or isinstance(v,list))})
-    print_to_log_info('df:\n', df)
-    assert len(df) == 1, len(df)
-    
-    print_to_log_info('dfs session:',type(dfs['session']))
-    df_session = pd.DataFrame({k:[v] for k,v in dfs['session'].items() if not (isinstance(v,dict) or isinstance(v,list))})
-    assert len(df_session) == 1, len(df_session)
-    print_to_log_info({k:pd.DataFrame(v) for k,v in dfs['session'].items() if (isinstance(v,dict) or isinstance(v,list))})
-
-    print_to_log_info('dfs event:',type(dfs['event']))
-    df_event = pd.DataFrame({k:[v] for k,v in dfs['event'].items() if not (isinstance(v,dict) or isinstance(v,list))})
-    assert len(df_event) == 1, len(df_event)
-    print_to_log_info({k:pd.DataFrame(v) for k,v in dfs['event'].items() if (isinstance(v,dict) or isinstance(v,list))})
-
-    print_to_log_info('dfs tournament:',type(dfs['tournament']))
-    df_tournament = pd.DataFrame({k:[v] for k,v in dfs['tournament'].items() if not (isinstance(v,dict) or isinstance(v,list))})
-    assert len(df_tournament) == 1, len(df_tournament)
-    print_to_log_info({k:pd.DataFrame(v) for k,v in dfs['tournament'].items() if (isinstance(v,dict) or isinstance(v,list))})
-
-    for col in df.columns:
-        print_to_log_debug('cols:',col,df[col].dtype)
-
-    # dfs scalers: ['_id', '_event_id', 'id', 'session_number', 'start_date', 'start_time', 'description', 'sess_type', 'box_number', 'is_online', 'results_available', 'was_not_played', 'results_last_updated']
-    # dfs dicts: ['tournament', 'event', 'handrecord', 'sections']
-    # dfs lists: ['overalls']
-   
-    print_to_log_info('dfs_results tournament:',type(dfs_results['tournament']))
-    df_results_tournament = pd.DataFrame({k:[v] for k,v in dfs_results['tournament'].items() if not (isinstance(v,dict) or isinstance(v,list))})
-    assert len(df_results_tournament) == 1, len(df_results_tournament)
-    print_to_log_info({k:pd.DataFrame(v) for k,v in dfs_results['tournament'].items() if (isinstance(v,dict) or isinstance(v,list))})
-
-    print_to_log_info('dfs_results event:',type(dfs_results['event']))
-    df_results_event = pd.DataFrame({k:[v] for k,v in dfs_results['event'].items() if not (isinstance(v,dict) or isinstance(v,list))})
-    assert len(df_event) == 1, len(df_event)
-    print_to_log_info({k:pd.DataFrame(v) for k,v in dfs_results['event'].items() if (isinstance(v,dict) or isinstance(v,list))})
-
-    print_to_log_info('dfs_results overalls:',type(dfs_results['overalls']))
-    df_results_overalls = pd.DataFrame(dfs_results['overalls'])
-    #assert len(df_results_overalls) == 1, len(df_results_overalls)
-    print_to_log_info(pd.DataFrame(dfs_results['overalls']))
-
-    print_to_log_info('dfs_results handrecord:',type(dfs_results['handrecord']))
-    df_results_handrecord = pd.DataFrame(dfs_results['handrecord'])
-    #assert len(df_results_handrecord) == 1, len(df_results_handrecord)
-    print_to_log_info(pd.DataFrame(dfs_results['handrecord']))
-
-    print_to_log_info('dfs_results sections:',type(dfs_results['sections']))
-    df_results_sections = pd.DataFrame(dfs_results['sections'])
-
-    df_board_results = pd.DataFrame()
-    for i,section in df_results_sections.iterrows():
-        br = pd.DataFrame(section['board_results'])
-        # todo: what to do with sections not containing acbl_number? concat all sections? concat may be correct since they may be included in matchpoint calculations.
-        if all(br['pair_acbl'].map(lambda x: int(acbl_number) not in x)): # if acbl_number is not in this section then skip.(?)
-            continue
-        df_board_results = pd.concat([df_board_results,br],axis='rows')
-        ns_df = df_board_results[df_board_results['orientation'].eq('N-S')]
-        ew_df = df_board_results[df_board_results['orientation'].eq('E-W')][['board_number','pair_number','pair_names','pair_acbl','score','match_points','percentage']]
-        df_board_results = pd.merge(ns_df,ew_df,left_on=['board_number','opponent_pair_number'],right_on=['board_number','pair_number'],suffixes=('_ns','_ew'),how='left')
-        df_board_results.drop(['opponent_pair_number','opponent_pair_names'],inplace=True,axis='columns')
-        df_board_results.rename({
-            'board_number':'Board',
-            'contract':'Contract',
-            'score_ns':'Score_NS',
-            'score_ew':'Score_EW',
-            'match_points_ns':'MatchPoints_NS',
-            'match_points_ew':'MatchPoints_EW',
-            'percentage_ns':'Pct_NS',
-            'percentage_ew':'Pct_EW',
-            'pair_number_ns':'Pair_Number_NS',
-            'pair_number_ew':'Pair_Number_EW',
-            'session_number':'Session',
-        },axis='columns',inplace=True)
-        df_board_results['pair_direction'] = df_board_results['orientation'].map({'N-S':'NS','E-W':'EW'})
-        df_board_results['player_number_n'] = df_board_results.apply(lambda r: r['pair_acbl_ns'][0],axis='columns').astype('string')
-        df_board_results['player_number_s'] = df_board_results.apply(lambda r: r['pair_acbl_ns'][1],axis='columns').astype('string')
-        df_board_results['player_number_e'] = df_board_results.apply(lambda r: r['pair_acbl_ew'][0],axis='columns').astype('string')
-        df_board_results['player_number_w'] = df_board_results.apply(lambda r: r['pair_acbl_ew'][1],axis='columns').astype('string')
-        df_board_results['player_name_n'] = df_board_results.apply(lambda r: r['pair_names_ns'][0],axis='columns')
-        df_board_results['player_name_s'] = df_board_results.apply(lambda r: r['pair_names_ns'][1],axis='columns')
-        df_board_results['player_name_e'] = df_board_results.apply(lambda r: r['pair_names_ew'][0],axis='columns')
-        df_board_results['player_name_w'] = df_board_results.apply(lambda r: r['pair_names_ew'][1],axis='columns')
-        # todo: get from masterpoint dict
-        #df_board_results['Club'] = '12345678' # why is this needed?
-        df_board_results['Session'] = section['session_id']
-        df_board_results['mp_total_n'] = 300
-        df_board_results['mp_total_e'] = 300
-        df_board_results['mp_total_s'] = 300
-        df_board_results['mp_total_w'] = 300
-        df_board_results['MP_Sum_NS'] = 300+300
-        df_board_results['MP_Sum_EW'] = 300+300
-        df_board_results['MP_Geo_NS'] = 300*300
-        df_board_results['MP_Geo_EW'] = 300*300
-        df_board_results['declarer'] = df_board_results['declarer'].map(lambda x: x[0].upper() if len(x) else None) # None is needed for PASS
-        df_board_results['Pct_NS'] = df_board_results['Pct_NS'].div(100)
-        df_board_results['Pct_EW'] = df_board_results['Pct_EW'].div(100)
-        df_board_results['Table'] = None # todo: is this right?
-        df_board_results['Round'] = None # todo: is this right?
-        df_board_results['tb_count'] = None # todo: is this right?
-        df_board_results['dealer'] = df_board_results['Board'].map(mlBridgeLib.BoardNumberToDealer)
-        df_board_results['iVul'] = df_board_results['Board'].map(mlBridgeLib.BoardNumberToVul).astype('uint8') # 0 to 3
-        df_board_results['event_id'] = section['session_id'].astype('int32') # for club compatibility
-        df_board_results['section_name'] = section['section_label'] # for club compatibility
-        df_board_results['section_id'] = df_board_results['event_id']+'-'+df_board_results['section_name'] # for club compatibility
-        df_board_results['Date'] = pd.to_datetime(df_event['start_date'][0]) # converting to datetime64[ns] for human readable display purposes but will create 'iDate' (int64) in augment
-        df_board_results['game_type'] = df_event['game_type'].astype('category') # for club compatibility
-        df_board_results['event_type'] = df_event['event_type'].astype('category') # for club compatibility
-        df_board_results['mp_limit'] = df_event['mp_limit'].astype('category') # for club compatibility
-        df_board_results['mp_color'] = df_event['mp_color'].astype('category') # for club compatibility
-        df_board_results['mp_rating'] = df_event['mp_rating'].astype('category') # for club compatibility
-        board_to_brs_d = dict(zip(df_results_handrecord['board_number'],mlBridgeLib.hrs_to_brss(df_results_handrecord)))
-        df_board_results['board_record_string'] = df_board_results['Board'].map(board_to_brs_d)
-        df_board_results.drop(['orientation','pair_acbl_ns', 'pair_acbl_ew', 'pair_names_ns', 'pair_names_ew'],inplace=True,axis='columns')
-
-
-    df = clean_validate_df(df_board_results)
-    df, sd_cache_d, matchpoint_ns_d = augment_df(df,{})
-
-    return df, sd_cache_d, matchpoint_ns_d
-
-
-# obsolete?
-def clean_validate_tournament_df(df):
-
-    # par, hand_record_id, DD, Vul, Hands, board_record_string?, ns_score, ew_score, Final_Stand_NS|EW, MatchPoints_NS, MatchPoints_EW, player_number_[nesw], contract, BidLvl, BidSuit, Dbl, Declarer_Direction
-
-    # change clean_validate_club_df to handle these missing columns; par, Pair_Number_NS|EW, table_number, round_number, double_dummy_ns|ew, board_record_string, hand_record_id.
-
-    return df
-
-
-# obsolete?
-def augment_tournament_df(df,sd_cache_d):
-    return df, sd_cache_d, {}
-
-
-def merge_clean_augment_club_dfs(dfs,sd_cache_d,acbl_number): # todo: acbl_number obsolete?
-
-    print_to_log_info('merge_clean_augment_club_dfs: dfs keys:',dfs.keys())
+    print_to_log_info('merge_clean_augment_club_dfs: dfs keys:', dfs.keys())
 
     df_brs = dfs['board_results']
     print_to_log_info(df_brs.head(1))
-    assert len(df_brs.filter(regex=r'_[xy]$').columns) == 0,df_brs.filter(regex=r'_[xy]$').columns
+    #assert not df_brs.columns.contains(r'^.*_[xy]$').any()
 
-    df_b = dfs['boards'].rename({'id':'board_id'},axis='columns')[['board_id','section_id','board_number']]
+    df_b = dfs['boards'].rename({'id': 'board_id'}).select(['board_id', 'section_id', 'board_number'])
     print_to_log_info(df_b.head(1))
-    assert len(df_b.filter(regex=r'_[xy]$').columns) == 0,df_b.filter(regex=r'_[xy]$').columns
+    #assert not df_b.columns.str.contains(r'^.*_[xy]$').any()
 
-    df_br_b = pd.merge(df_brs,df_b,on='board_id',how='left')
+    df_br_b = df_brs.join(df_b, on='board_id', how='left')
     print_to_log_info(df_br_b.head(1))
-    assert len(df_br_b) == len(df_brs)
-    assert len(df_br_b.filter(regex=r'_[xy]$').columns) == 0,df_br_b.filter(regex=r'_[xy]$').columns
+    assert df_br_b.height == df_brs.height
+    #assert not df_br_b.columns.str.contains(r'^.*_[xy]$').any()
 
-
-    df_sections = dfs['sections'].rename({'id':'section_id','name':'section_name'},axis='columns').drop(['created_at','updated_at','transaction_date','pair_summaries','boards'],axis='columns') # ['pair_summaries','boards'] are unwanted dicts
+    df_sections = dfs['sections'].rename({'id': 'section_id', 'name': 'section_name'}).drop(['created_at', 'updated_at', 'transaction_date', 'pair_summaries', 'boards'])
     print_to_log_info(df_sections.head(1))
 
-
-    df_br_b_sections = pd.merge(df_br_b,df_sections,on='section_id',how='left')
+    df_br_b_sections = df_br_b.join(df_sections, on='section_id', how='left')
     print_to_log_info(df_br_b_sections.head(1))
-    assert len(df_br_b_sections) == len(df_br_b)
-    assert len(df_br_b_sections.filter(regex=r'_[xy]$').columns) == 0,df_br_b_sections.filter(regex=r'_[xy]$').columns
+    assert df_br_b_sections.height == df_br_b.height
+    #assert not df_br_b_sections.columns.str.contains(r'^.*_[xy]$').any()
 
-
-    df_sessions = dfs['sessions'].rename({'id':'session_id','number':'session_number'},axis='columns').drop(['created_at','updated_at','transaction_date','hand_records','sections'],axis='columns') # ['hand_records','sections'] are unwanted dicts
-    # can't convert to int64 because SHUFFLE is a valid hand_record_id. Need to treat as string.
-    # df_sessions['hand_record_id'] = df_sessions['hand_record_id'].astype('int64') # change now for merge
+    df_sessions = dfs['sessions'].rename({'id': 'session_id', 'number': 'session_number'}).drop(['created_at', 'updated_at', 'transaction_date', 'hand_records', 'sections'])
     print_to_log_info(df_sessions.head(1))
 
-
-    df_br_b_sections_sessions = pd.merge(df_br_b_sections,df_sessions,on='session_id',how='left')
+    df_sessions = df_sessions.with_columns(pl.col("session_id").cast(pl.Int64)) # todo: hack to fix hack in pandas to polars conversion error
+    df_br_b_sections_sessions = df_br_b_sections.join(df_sessions, on='session_id', how='left')
     print_to_log_info(df_br_b_sections_sessions.head(1))
-    assert len(df_br_b_sections_sessions) == len(df_br_b_sections)
-    assert len(df_br_b_sections_sessions.filter(regex=r'_[xy]$').columns) == 0,df_br_b_sections_sessions.filter(regex=r'_[xy]$').columns # to fix, drop duplicated column names
+    assert df_br_b_sections_sessions.height == df_br_b_sections.height
+    #assert not df_br_b_sections_sessions.columns.str.contains(r'^.*_[xy]$').any()
 
-
-    df_clubs = dfs['club'].rename({'id':'event_id','name':'club_name','type':'club_type'},axis='columns').drop(['created_at','updated_at','transaction_date'],axis='columns') # name and type are renamed to avoid conflict with df_events
+    df_clubs = dfs['club'].rename({'id': 'event_id', 'name': 'club_name', 'type': 'club_type'}).drop(['created_at', 'updated_at', 'transaction_date'])
     print_to_log_info(df_clubs.head(1))
 
-
-    df_br_b_sections_sessions_clubs = pd.merge(df_br_b_sections_sessions,df_clubs,on='event_id',how='left')
+    df_br_b_sections_sessions = df_br_b_sections_sessions.with_columns(pl.col("event_id").cast(pl.Int64)) # todo: hack to fix hack in pandas to polars conversion error
+    df_br_b_sections_sessions_clubs = df_br_b_sections_sessions.join(df_clubs, on='event_id', how='left')
     print_to_log_info(df_br_b_sections_sessions_clubs.head(1))
-    assert len(df_br_b_sections_sessions_clubs) == len(df_br_b_sections)
-    assert len(df_sections.filter(regex=r'_[xy]$').columns) == 0,df_sections.filter(regex=r'_[xy]$').columns
+    assert df_br_b_sections_sessions_clubs.height == df_br_b_sections.height
+    #assert not df_sections.columns.str.contains(r'^.*_[xy]$').any()
 
-        
-    df_events = dfs['event'].rename({'id':'event_id','club_name':'event_club_name','type':'event_type'},axis='columns').drop(['created_at','updated_at','transaction_date','deleted_at'],axis='columns')
+    df_events = dfs['event'].rename({'id': 'event_id', 'club_name': 'event_club_name', 'type': 'event_type'}).drop(['created_at', 'updated_at', 'transaction_date', 'deleted_at'])
     print_to_log_info(df_events.head(1))
 
-
-    df_br_b_sections_sessions_events = pd.merge(df_br_b_sections_sessions_clubs,df_events,on='event_id',how='left')
+    df_br_b_sections_sessions_events = df_br_b_sections_sessions_clubs.join(df_events, on='event_id', how='left')
     print_to_log_info(df_br_b_sections_sessions_events.head(1))
-    assert len(df_br_b_sections_sessions_events) == len(df_br_b_sections_sessions_clubs)
-    assert len(df_br_b_sections_sessions_events.filter(regex=r'_[xy]$').columns) == 0,df_br_b_sections_sessions_events.filter(regex=r'_[xy]$').columns
+    assert df_br_b_sections_sessions_events.height == df_br_b_sections_sessions_clubs.height
+    #assert not df_br_b_sections_sessions_events.columns.str.contains(r'^.*_[xy]$').any()
 
-
-    df_pair_summaries = dfs['pair_summaries'].rename({'id':'pair_summary_id'},axis='columns').drop(['created_at','updated_at','transaction_date'],axis='columns')
+    df_pair_summaries = dfs['pair_summaries'].rename({'id': 'pair_summary_id'}).drop(['created_at', 'updated_at', 'transaction_date'])
     print_to_log_info(df_pair_summaries.head(1))
 
-    # todo: merge df_pair_summaries with strat_place. issue is that strat_place has multiple rows per pair_summary_id
-    df_pair_summaries_strat = df_pair_summaries
-    # df_strat_place = dfs['strat_place'].rename({'rank':'strat_rank','type':'strat_type'},axis='columns').drop(['id','created_at','updated_at','transaction_date'],axis='columns')
-    # print_to_log(df_strat_place.head(1))
+    df_br_b_pair_summary_ns = df_pair_summaries.filter(pl.col('direction') == 'NS').with_columns(pl.col('pair_number').alias('ns_pair'), pl.col('section_id').alias('section_id'))
+    #assert not df_br_b_pair_summary_ns.columns.str.contains(r'^.*_[xy]$').any()
+    df_br_b_pair_summary_ew = df_pair_summaries.filter(pl.col('direction') == 'EW').with_columns(pl.col('pair_number').alias('ew_pair'), pl.col('section_id').alias('section_id'))
+    #assert not df_br_b_pair_summary_ew.columns.str.contains(r'^.*_[xy]$').any()
 
-    # df_pair_summaries_strat = pd.merge(df_pair_summaries,df_strat_place,on='pair_summary_id',how='left')
-    # print_to_log(df_pair_summaries_strat.head(1))
-    # assert len(df_pair_summaries_strat.filter(regex=r'_[xy]$').columns) == 0,df_pair_summaries_strat.filter(regex=r'_[xy]$').columns
+    df_players = dfs['players'].drop(['id', 'created_at', 'updated_at', 'transaction_date']).rename({'id_number': 'player_number', 'name': 'player_name'})
+    player_n = df_players.group_by('pair_summary_id').agg(pl.first('player_number').alias('player_number_n'), pl.first('player_name').alias('player_name_n'))
+    player_s = df_players.group_by('pair_summary_id').agg(pl.last('player_number').alias('player_number_s'), pl.last('player_name').alias('player_name_s'))
+    player_e = df_players.group_by('pair_summary_id').agg(pl.first('player_number').alias('player_number_e'), pl.first('player_name').alias('player_name_e'))
+    player_w = df_players.group_by('pair_summary_id').agg(pl.last('player_number').alias('player_number_w'), pl.last('player_name').alias('player_name_w'))
 
-    df_br_b_pair_summary_ns = df_pair_summaries_strat[df_pair_summaries_strat['direction'].eq('NS')].add_suffix('_ns').rename({'pair_number_ns':'ns_pair','section_id_ns':'section_id'},axis='columns')
-    assert len(df_br_b_pair_summary_ns.filter(regex=r'_[xy]$').columns) == 0,df_br_b_pair_summary_ns.filter(regex=r'_[xy]$').columns
-    df_br_b_pair_summary_ew = df_pair_summaries_strat[df_pair_summaries_strat['direction'].eq('EW')].add_suffix('_ew').rename({'pair_number_ew':'ew_pair','section_id_ew':'section_id'},axis='columns')
-    assert len(df_br_b_pair_summary_ew.filter(regex=r'_[xy]$').columns) == 0,df_br_b_pair_summary_ew.filter(regex=r'_[xy]$').columns
-
-    df_players = dfs['players'].drop(['id','created_at','updated_at','transaction_date'],axis='columns').rename({'id_number':'player_number','name':'player_name'},axis='columns')
-    player_n = df_players.groupby('pair_summary_id').first().reset_index().add_suffix('_n').rename({'pair_summary_id_n':'pair_summary_id_ns'},axis='columns')
-    player_s = df_players.groupby('pair_summary_id').last().reset_index().add_suffix('_s').rename({'pair_summary_id_s':'pair_summary_id_ns'},axis='columns')
-    player_e = df_players.groupby('pair_summary_id').first().reset_index().add_suffix('_e').rename({'pair_summary_id_e':'pair_summary_id_ew'},axis='columns')
-    player_w = df_players.groupby('pair_summary_id').last().reset_index().add_suffix('_w').rename({'pair_summary_id_w':'pair_summary_id_ew'},axis='columns')
-
-    player_ns = pd.merge(player_n,player_s,on='pair_summary_id_ns',how='left')
+    player_ns = player_n.join(player_s, on='pair_summary_id', how='left')
     print_to_log_info(player_ns.head(1))
-    assert len(player_ns) == len(player_n)
-    assert len(player_ns.filter(regex=r'_[xy]$').columns) == 0,player_ns.filter(regex=r'_[xy]$').columns
-    player_ew = pd.merge(player_e,player_w,on='pair_summary_id_ew',how='left')
+    assert player_ns.height == player_n.height
+    #assert not player_ns.columns.str.contains(r'^.*_[xy]$').any()
+    player_ew = player_e.join(player_w, on='pair_summary_id', how='left')
     print_to_log_info(player_ew.head(1))
-    assert len(player_ew) == len(player_e)
-    assert len(player_ew.filter(regex=r'_[xy]$').columns) == 0,player_ew.filter(regex=r'_[xy]$').columns
+    assert player_ew.height == player_e.height
+    #assert not player_ew.columns.str.contains(r'^.*_[xy]$').any()
 
-    # due to an oddity with merge(), must never merge on a column that has NaNs. This section avoids that but at the cost of added complexity.
-    df_pair_summary_players_ns = pd.merge(df_br_b_pair_summary_ns,player_ns,on='pair_summary_id_ns',how='left')
-    assert len(df_pair_summary_players_ns) == len(df_br_b_pair_summary_ns)
-    df_pair_summary_players_ew = pd.merge(df_br_b_pair_summary_ew,player_ew,on='pair_summary_id_ew',how='left')
-    assert len(df_pair_summary_players_ew) == len(df_br_b_pair_summary_ew)
-    #df_pair_summary_players = pd.merge(df_pair_summary_players_ns,df_pair_summary_players_ew,how='left') # yes, on is not needed
-    #assert len(df_pair_summary_players) == len(df_pair_summary_players_ns) # likely this is an issue on an EW sitout. Need to compare ns,ew lengths and how on the longer one?
-    df_br_b_sections_sessions_events_pair_summary_players = pd.merge(df_br_b_sections_sessions_events,df_pair_summary_players_ns,on=('section_id','ns_pair'),how='left') # yes, requires inner. Otherwise right df non-on columns will be NaNs.
-    print_to_log_info(df_br_b_sections_sessions_events_pair_summary_players.head(1))
-    assert len(df_br_b_sections_sessions_events_pair_summary_players) == len(df_br_b_sections_sessions_events)
-    assert len(df_br_b_sections_sessions_events_pair_summary_players.filter(regex=r'_[xy]$').columns) == 0,df_br_b_sections_sessions_events_pair_summary_players.filter(regex=r'_[xy]$').columns
-    df_br_b_sections_sessions_events_pair_summary_players = pd.merge(df_br_b_sections_sessions_events_pair_summary_players,df_pair_summary_players_ew,on=('section_id','ew_pair'),how='left') # yes, requires inner. Otherwise right df non-on columns will be NaNs.
-    print_to_log_info(df_br_b_sections_sessions_events_pair_summary_players.head(1))
-    assert len(df_br_b_sections_sessions_events_pair_summary_players) == len(df_br_b_sections_sessions_events)
-    assert len(df_br_b_sections_sessions_events_pair_summary_players.filter(regex=r'_[xy]$').columns) == 0,df_br_b_sections_sessions_events_pair_summary_players.filter(regex=r'_[xy]$').columns
+    df_pair_summary_players_ns = df_br_b_pair_summary_ns.join(player_ns, on='pair_summary_id', how='left')
+    assert df_pair_summary_players_ns.height == df_br_b_pair_summary_ns.height
+    df_pair_summary_players_ew = df_br_b_pair_summary_ew.join(player_ew, on='pair_summary_id', how='left')
+    assert df_pair_summary_players_ew.height == df_br_b_pair_summary_ew.height
 
-    df_hrs = dfs['hand_records'].rename({'hand_record_set_id':'hand_record_id'},axis='columns').drop(['points.N','points.E','points.S','points.W'],axis='columns') # don't want points (HCP) from hand_records. will compute later.
+    df_br_b_sections_sessions_events_pair_summary_players = df_br_b_sections_sessions_events.join(df_pair_summary_players_ns, on=['section_id', 'ns_pair'], how='left')
+    print_to_log_info(df_br_b_sections_sessions_events_pair_summary_players.head(1))
+    assert df_br_b_sections_sessions_events_pair_summary_players.height == df_br_b_sections_sessions_events.height
+    #assert not df_br_b_sections_sessions_events_pair_summary_players.columns.str.contains(r'^.*_[xy]$').any()
+    df_br_b_sections_sessions_events_pair_summary_players = df_br_b_sections_sessions_events_pair_summary_players.join(df_pair_summary_players_ew, on=['section_id', 'ew_pair'], how='left')
+    print_to_log_info(df_br_b_sections_sessions_events_pair_summary_players.head(1))
+    assert df_br_b_sections_sessions_events_pair_summary_players.height == df_br_b_sections_sessions_events.height
+    #assert not df_br_b_sections_sessions_events_pair_summary_players.columns.str.contains(r'^.*_[xy]$').any()
+
+    df_hrs = dfs['hand_records'].rename({'hand_record_set_id': 'hand_record_id'}).drop(['points.N', 'points.E', 'points.S', 'points.W'])
     print_to_log_info(df_hrs.head(1))
 
-    df_br_b_sections_sessions_events_pair_summary_players_hrs = pd.merge(df_br_b_sections_sessions_events_pair_summary_players,df_hrs.astype({'hand_record_id':'string'}).drop(['id','created_at','updated_at'],axis='columns'),left_on=('hand_record_id','board_number'),right_on=('hand_record_id','board'),how='left')
+    df_br_b_sections_sessions_events_pair_summary_players = df_br_b_sections_sessions_events_pair_summary_players.with_columns(pl.col("hand_record_id").cast(pl.Int64)) # todo: hack to fix hack in pandas to polars conversion error
+    df_br_b_sections_sessions_events_pair_summary_players_hrs = df_br_b_sections_sessions_events_pair_summary_players.join(df_hrs.drop(['id', 'created_at', 'updated_at']), left_on=['hand_record_id', 'board_number'], right_on=['hand_record_id', 'board'], how='left')
     print_to_log_info(df_br_b_sections_sessions_events_pair_summary_players_hrs.head(1))
-    assert len(df_br_b_sections_sessions_events_pair_summary_players_hrs) == len(df_br_b_sections_sessions_events_pair_summary_players)
-    assert len(df_br_b_sections_sessions_events_pair_summary_players_hrs.filter(regex=r'_[xy]$').columns) == 0,df_br_b_sections_sessions_events_pair_summary_players_hrs.filter(regex=r'_[xy]$').columns
-
+    assert df_br_b_sections_sessions_events_pair_summary_players_hrs.height == df_br_b_sections_sessions_events_pair_summary_players.height
+    #assert not df_br_b_sections_sessions_events_pair_summary_players_hrs.columns.str.contains(r'^.*_[xy]$').any()
 
     df = df_br_b_sections_sessions_events_pair_summary_players_hrs
     for col in df.columns:
-        print_to_log_info('cols:',col,df[col].dtype)
+        print_to_log_info(f'cols: {col} {df[col].dtype}')
 
-    df.drop(['id','created_at','updated_at','board_id','double_dummy_ns','double_dummy_ew'],axis='columns',inplace=True)
+    df = df.drop(['id', 'created_at', 'updated_at', 'board_id', 'double_dummy_ns', 'double_dummy_ew'])
 
-    df.rename({
-        'board':'Board',
-        'club_id_number':'Club',
-        'contract':'Contract',
-        'game_date':'Date',
-        'ns_match_points':'MatchPoints_NS',
-        'ew_match_points':'MatchPoints_EW',
-        'ns_pair':'Pair_Number_NS',
-        'ew_pair':'Pair_Number_EW',
-        'percentage_ns':'Final_Standing_NS',
-        'percentage_ew':'Final_Standing_EW',
-        'result':'Result',
-        'round_number':'Round',
-        'ns_score':'Score_NS',
-        'ew_score':'Score_EW',
-        'session_number':'Session',
-        'table_number':'Table',
-        'tricks_taken':'Tricks',
-       },axis='columns',inplace=True)
+    df = df.rename({
+        'board_number': 'Board',
+        'club_id_number': 'Club',
+        'contract': 'Contract',
+        'game_date': 'Date',
+        'ns_match_points': 'MP_NS',
+        'ew_match_points': 'MP_EW',
+        'ns_pair': 'Pair_Number_NS',
+        'ew_pair': 'Pair_Number_EW',
+        #'percentage_ns': 'Final_Standing_NS', # percentage_ns is not a column in the data. use percentage instead?
+        #'percentage_ew': 'Final_Standing_EW', # percentage_ew is not a column in the data. use percentage instead?
+        'result': 'Result',
+        'round_number': 'Round',
+        'ns_score': 'Score_NS',
+        'ew_score': 'Score_EW',
+        'session_number': 'Session',
+        'table_number': 'Table',
+        'tricks_taken': 'Tricks',
+    })
 
-    # columns unique to club results
-    df = df.astype({
-        'board_record_string':'string',
-        'Date':'datetime64[ns]', # human-readable date for display. also will create 'iDate' (int64) in augment
-        'Final_Standing_NS':'float32',
-        'Final_Standing_EW':'float32',
-        'hand_record_id':'int64',
-        'Pair_Number_NS':'uint16',
-        'Pair_Number_EW':'uint16',
-        })
+    df = df.with_columns([
+        pl.col('board_record_string').cast(pl.Utf8),
+        pl.col("Date").str.strptime(pl.Datetime, format="%Y-%m-%d %H:%M:%S"),
+        #pl.col('Final_Standing_NS').cast(pl.Float32), # Final_Standing_NS is not a column in the data. use percentage instead?
+        #pl.col('Final_Standing_EW').cast(pl.Float32), # Final_Standing_EW is not a column in the data. use percentage instead?
+        pl.col('hand_record_id').cast(pl.Int64),
+        pl.col('Pair_Number_NS').cast(pl.UInt16),
+        pl.col('Pair_Number_EW').cast(pl.UInt16),
+        pl.col('pair_summary_id').alias('pair_summary_id_ns'), # todo: remove this alias after ai model is updated to use pair_summary_id
+        pl.col('pair_summary_id').alias('pair_summary_id_ew'), # todo: remove this alias after ai model is updated to use pair_summary_id
+    ])
 
-    df = clean_validate_df(df)
-    df, sd_cache_d, matchpoint_ns_d = augment_df(df,sd_cache_d) # takes 5s
+    df = acbldf_to_mldf(df) # todo: temporarily convert to pandas to use augment_df until clean_validate_df is converted to polars
 
-    return df, sd_cache_d, matchpoint_ns_d
+    return df
+
+    #df, sd_cache_d, matchpoint_ns_d = augment_df(df, sd_cache_d)
+
+    #return df, sd_cache_d, matchpoint_ns_d
 
 
-def clean_validate_df(df):
+def acbldf_to_mldf(df: pl.DataFrame) -> pl.DataFrame:
+    # Rename columns
+    df = df.rename({'declarer': 'Declarer_Direction'})
+    assert df['Declarer_Direction'].is_in(list('NESW')).all() # apparently acbl converts declarer to 'N' if PASS
 
-    df.rename({'declarer':'Declarer_Direction'},axis='columns',inplace=True)
+    # Drop rows where 'Board' is NaN
+    df = df.filter(pl.col('Board').is_not_null() & pl.col('Board').gt(0))
 
-    # Cleanup all sorts of columns. Create new columns where missing.
-    df.drop(df[df['Board'].isna()].index,inplace=True) # https://my.acbl.org/club-results/details/952514
-    df['Board'] = df['Board'].astype('uint8')
-    assert df['Board'].ge(1).all()
+    # Convert 'Board' to UInt8
+    df = df.with_columns(pl.col('Board').cast(pl.UInt8))
 
-    assert 'Board_Top' not in df.columns
-    tops = {}
-    for b in df['Board'].unique():
-        tops[b] = df[df['Board'].eq(b)]['MatchPoints_NS'].count()-1
-        assert tops[b] == df[df['Board'].eq(b)]['MatchPoints_EW'].count()-1
-    # if any rows were dropped, the calculation of board's top/pct will be wrong (outside of (0,1)). Need to calculate Board_Top before dropping any rows.
-    # PerformanceWarning: DataFrame is highly fragmented.
-    df['Board_Top'] = df['Board'].map(tops)
-    if set(['Pct_NS', 'Pct_EW']).isdisjoint(df.columns): # disjoint means no elements of set are in df.columns
-        # PerformanceWarning: DataFrame is highly fragmented.
-        df['Pct_NS'] = df['MatchPoints_NS'].astype('float32').div(df['Board_Top'])
-        # PerformanceWarning: DataFrame is highly fragmented.
-        df['Pct_EW'] = df['MatchPoints_EW'].astype('float32').div(df['Board_Top'])
-    assert set(['Pct_NS', 'Pct_EW', 'Board_Top']).issubset(df.columns) # subset means all elements of the set are in df.columns
-    df.loc[df['Pct_NS']>1,'Pct_NS'] = 1 # assuming this can only happen if director adjusts score. todo: print >1 cases.
-    assert df['Pct_NS'].between(0,1).all(), [df[~df['Pct_NS'].between(0,1)][['Board','MatchPoints_NS','Board_Top','Pct_NS']]]
-    df.loc[df['Pct_EW']>1,'Pct_EW'] = 1 # assuming this can only happen if director adjusts score. todo: print >1 cases.
-    assert df['Pct_EW'].between(0,1).all(), [df[~df['Pct_EW'].between(0,1)][['Board','MatchPoints_EW','Board_Top','Pct_EW']]]
+    # Calculate 'MP_Top'
+    tops = df.group_by('Board').agg(
+        (pl.count('MP_NS') - 1).alias('MP_Top')
+    )
+    df = df.join(tops, on='Board')
 
-    # transpose pair_name (last name, first_name).
+    df = df.with_columns(pl.col('board_record_string').map_elements(mlBridgeLib.brs_to_pbn,return_dtype=pl.Utf8).alias('PBN'))
+
+    df = df.rename({'dealer': 'Dealer'})
+    # todo: drop rows where Dealer is not in NESW
+    assert df['Dealer'].is_in(list('NESW')).all()
+
+    # Calculate percentages
+    if 'Pct_NS' not in df.columns and 'Pct_EW' not in df.columns:
+        df = df.with_columns([
+            (pl.col('MP_NS').cast(pl.Float32) / pl.col('MP_Top')).alias('Pct_NS'),
+            (pl.col('MP_EW').cast(pl.Float32) / pl.col('MP_Top')).alias('Pct_EW')
+        ])
+
+    # Cap percentages at 1
+    df = df.with_columns([
+        pl.when(pl.col('Pct_NS') > 1).then(1).otherwise(pl.col('Pct_NS')).alias('Pct_NS'),
+        pl.when(pl.col('Pct_EW') > 1).then(1).otherwise(pl.col('Pct_EW')).alias('Pct_EW')
+    ])
+
+    # Function to transform names into "first last" format
+    def last_first_to_first_last(name):
+        # Replace commas with spaces and split
+        parts = name.replace(',', ' ').split()
+        # Return "first last" format
+        return ' '.join(parts[1:] + parts[:1]) if len(parts) > 1 else name
+
+    # Transpose player names
     for d in 'NESW':
-        df.rename({'player_number_'+d.lower():'Player_Number_'+d},axis='columns',inplace=True)
-        # PerformanceWarning: DataFrame is highly fragmented.
-        df['iPlayer_Number_'+d] = pd.to_numeric(df['Player_Number_'+d], errors='coerce').fillna(0).astype('int32') # Convert to numeric. Make NaN into 0. Create iPlayer_Number column to match ai model column name. ai likes numerics, hates strings.
-        # PerformanceWarning: DataFrame is highly fragmented.
-        df['Player_Name_'+d] = df['player_name_'+d.lower()].str.split(',').str[::-1].str.join(' ') # github Copilot wrote this line!
-        df.drop(['player_name_'+d.lower()],axis='columns',inplace=True)
+        df = df.rename({f'player_number_{d.lower()}': f'Player_ID_{d}'})
+        df = df.rename({f'player_name_{d.lower()}': f'Player_Name_{d}'})
+        df = df.with_columns([
+            #pl.col(f'Player_ID_{d}').cast(pl.UInt32).alias(f'iPlayer_Number_{d}'),
+            pl.col(f'Player_Name_{d}').map_elements(last_first_to_first_last).alias(f'Player_Name_{d}')
+        ])
 
-    # clean up contracts. Create BidLvl, BidSuit, Dbl columns.
-    contractdf = df['Contract'].str.replace(' ','').str.upper().str.replace('NT','N').str.extract(r'^(?P<BidLvl>\d)(?P<BidSuit>C|D|H|S|N)(?P<Dbl>X*)$')
-    # PerformanceWarning: DataFrame is highly fragmented.
-    df['BidLvl'] = contractdf['BidLvl']
-    # PerformanceWarning: DataFrame is highly fragmented.
-    df['BidSuit'] = contractdf['BidSuit']
-    # PerformanceWarning: DataFrame is highly fragmented.
-    df['Dbl'] = contractdf['Dbl']
-    del contractdf
-    # There's all sorts of exceptional crap which needs to be done for 'PASS', 'NP', 'BYE', 'AVG', 'AV+', 'AV-', 'AVG+', 'AVG-', 'AVG+/-'. Only 'PASS' is handled, the rest are dropped.
-    drop_rows = df['Contract'].ne('PASS')&(df['Score_NS'].eq('PASS')&df['Score_EW'].eq('PASS')&df['BidLvl'].isna()|df['BidSuit'].isna()|df['Dbl'].isna())
-    print_to_log(logging.WARNING, 'Invalid contracts: drop_rows:',drop_rows.sum(),df[drop_rows][['Contract','BidLvl','BidSuit','Dbl']])
-    df.drop(df[drop_rows].index,inplace=True)
-    drop_rows = ~df['Declarer_Direction'].isin(list('NESW')) # keep N,S,E,W. Drop EW, NS, w, ... < 500 cases.
-    print_to_log(logging.WARNING, 'Invalid declarers: drop_rows:',drop_rows.sum(),df[drop_rows][['Declarer_Direction']])
-    df.drop(df[drop_rows].index,inplace=True)
-    df.loc[df['Contract'].ne('PASS'),'Contract'] = df['BidLvl']+df['BidSuit']+df['Dbl']+df['Declarer_Direction']
-    df['BidLvl'] = df['BidLvl'].astype('UInt8') # using UInt8 instead of uint8 because of NaNs
-    assert (df['Contract'].eq('PASS')|df['BidLvl'].notna()).all()
-    assert (df['Contract'].eq('PASS')|df['BidLvl'].between(1,7,inclusive='both')).all()
-    assert (df['Contract'].eq('PASS')|df['BidSuit'].notna()).all()
-    assert (df['Contract'].eq('PASS')|df['BidSuit'].isin(list('CDHSN'))).all()
-    assert (df['Contract'].eq('PASS')|df['Dbl'].notna()).all()
-    assert (df['Contract'].eq('PASS')|df['Dbl'].isin(['','X','XX'])).all()
+    # Clean up contracts
+    df = df.with_columns(
+           pl.col('Contract')
+            .str.replace(' ', '',n=2)
+            .str.to_uppercase()
+            .str.replace('NT', 'N')
+            .alias('Contract')
+        )
 
-    assert df['Table'].isna().all() or df['Table'].ge(1).all() # some events have NaN table_numbers.
- 
-    # create more useful Vul column
-    # PerformanceWarning: DataFrame is highly fragmented.
-    df['iVul'] = df['Board'].map(mlBridgeLib.BoardNumberToVul).astype('uint8') # 0 to 3
-    df['Vul'] = df['iVul'].map(lambda x: mlBridgeLib.vul_syms[x]).astype('string') # None, NS, EW, Both
- 
-    if not pd.api.types.is_numeric_dtype(df['Score_NS']):
-        # PerformanceWarning: DataFrame is highly fragmented.
-        df['Score_NS'] = df['Score_NS'].astype('string') # make sure all elements are a string
-        df.loc[df['Score_NS'].eq('PASS'),'Score_NS'] = '0'
-        assert df['Score_NS'].ne('PASS').all()
-        drop_rows = ~df['Score_NS'].map(lambda c: c[c[0] == '-':].isnumeric()) | ~df['Score_NS'].map(lambda c: c[c[0] == '-':].isnumeric())
-        df.drop(df[drop_rows].index,inplace=True)
-        assert df['Score_NS'].isna().sum() == 0
-        assert df['Score_NS'].isna().sum() == 0
-    df['Score_NS'] = df['Score_NS'].astype('int16')
-    df['Score_EW'] = -df['Score_NS']
+    df = df.with_columns([
+        pl.when(pl.col('Contract') == 'PASS')
+        .then(pl.lit(None))
+        .otherwise(pl.col('Contract').str.slice(0, 1))
+        .cast(pl.UInt8)
+        .alias('BidLvl'),
 
-    # tournaments do not have Tricks or Result columns. Create them.
-    # PerformanceWarning: DataFrame is highly fragmented.
-    df['scores_l'] = mlBridgeLib.ContractToScores(df) # todo: ValueError: Cannot set a DataFrame with multiple columns to the single column scores_l on
-    if 'Result' in df:
-        assert df['Result'].notna().all() and df['Result'].notnull().all()
-        df['Result'] = df['Result'].map(lambda x: 0 if x in ['=','0',''] else int(x[1:]) if x[0]=='+' else int(x)).astype('int8') # 0 for PASS
-    else:
-        df['Result'] = df.apply(lambda r: pd.NA if  r['Score_NS'] not in r['scores_l'] else r['scores_l'].index(r['Score_NS'])-(r['BidLvl']+6),axis='columns').astype('Int8') # pd.NA is due to director's adjustment
-    if df['Result'].isna().any():
-        print_to_log_info('NaN Results:\n',df[df['Result'].isna()][['Board','Contract','BidLvl','BidSuit','Dbl','Declarer_Direction','Score_NS','Score_EW','Result','scores_l']])
-    # The following line is on watch. Confirmed that there was an issue with pandas. Effects 'Result' and 'Tricks' and 'BidLvl' columns.
-    assert df['Result'].map(lambda x: (x != x) or (x is pd.NA) or -13 <= x <= 13).all() # hmmm, x != x is the only thing which works? Does the new pandas behave as expected? Remove x != x or x is pd.NA?
+        pl.when(pl.col('Contract') == 'PASS')
+        .then(pl.lit(None))
+        .otherwise(pl.col('Contract').str.slice(1, 1))
+        .cast(pl.String)
+        .alias('BidSuit'),
 
-    if 'Tricks' in df and df['Tricks'].notnull().all(): # tournaments have a Trick column with all None(?).
-        assert df['Tricks'].notnull().all()
-        df.loc[df['Contract'].eq('PASS'),'Tricks'] = pd.NA
-    else:
-        df['Tricks'] = df.apply(lambda r: pd.NA if r['Contract'] == 'PASS' else r['BidLvl']+6+r['Result'],axis='columns') # pd.NA is needed for PASS
-    if df['Tricks'].isna().any():
-        print_to_log_info('NaN Tricks:\n',df[df['Tricks'].isna()][['Board','Contract','BidLvl','BidSuit','Dbl','Declarer_Direction','Score_NS','Score_EW','Tricks','Result','scores_l']])
-    df['Tricks'] = df['Tricks'].astype('UInt8')
-    # The following line is on watch. Confirmed that there was an issue with pandas. Effects 'Result' and 'Tricks' and 'BidLvl' columns.
-    assert df['Tricks'].map(lambda x: (x != x) or (x is pd.NA) or (0 <= x <= 13)).all() # hmmm, x != x is the only thing which works? Does the new pandas behave as expected? Remove x != x or x is pd.NA?
+        pl.when(pl.col('Contract') == 'PASS')
+        .then(pl.lit(None))
+        .otherwise(pl.col('Contract').str.slice(2))
+        .cast(pl.String)
+        .alias('Dbl'),
+    ])
 
-    df['Round'] = df['Round'].fillna(0) # Round is sometimes missing. fill with 0.
-    df['tb_count'] = df['tb_count'].fillna(0).astype('uint8') # tb_count is sometimes missing a value. fill with 0.
-    df['Table'] = df['Table'].fillna(0).astype('uint8') # todo: Table is often missing a value. fill with 0.
+    # reformat contract to standard format. Using endplay's contract format.
+    df = df.with_columns([
+        pl.when(pl.col('Contract') == 'PASS')
+        .then(pl.col('Contract'))
+        .otherwise(pl.col('BidLvl').cast(pl.Utf8)+pl.col('BidSuit')+pl.col('Declarer_Direction')+pl.col('Dbl'))
+        .cast(pl.String)
+        .alias('Contract'),
+    ])
 
-    df.drop(['scores_l'],axis='columns',inplace=True)
+    # Drop invalid contracts
+    drop_rows = (
+        (pl.col('Contract') != 'PASS') & 
+        (pl.col('Score_NS') == 'PASS') & 
+        (pl.col('Score_EW') == 'PASS') & 
+        (pl.col('BidLvl').is_null() | pl.col('BidSuit').is_null() | pl.col('Dbl').is_null())
+    )
+    df = df.filter(~drop_rows)
 
+    # Create 'iVul' and 'Vul' columns
+    df = df.with_columns([
+        pl.col('Board').map_elements(mlBridgeLib.BoardNumberToVul,return_dtype=pl.UInt8).alias('iVul'),
+    ])
+    # Create 'iVul' and 'Vul' columns
+    df = df.with_columns([
+        pl.col('iVul').map_elements(lambda x: mlBridgeLib.vul_syms[x],return_dtype=pl.Utf8).alias('Vul')
+    ])
+
+    # Convert 'Score_NS' to int16
+    df = df.with_columns(pl.col('Score_NS').str.replace('PASS', '0').cast(pl.Int16).alias('Score_NS'))
+    df = df.with_columns(pl.col('Score_NS').neg().alias('Score_EW'))
+
+    # Create 'Result' and 'Tricks' columns
+    df = df.with_columns([
+        pl.when(pl.col('Result').is_not_null())
+        .then(pl.col('Result').map_elements(lambda x: 0 if x in ['=', '0', ''] else int(x[1:]) if x[0] == '+' else int(x),return_dtype=pl.Int8))
+        .otherwise(pl.col('Result'))
+        .cast(pl.Int8)
+        .alias('Result')
+    ])
+
+    df = df.with_columns(
+        pl.when(pl.col('Contract') == 'PASS')
+        .then(pl.lit(None))
+        .otherwise(pl.col('BidLvl') + 6 + pl.col('Result'))
+        .alias('Tricks')
+    )
+
+    # Fill missing values
+    df = df.with_columns([
+        pl.col('Round').fill_null(0),
+        pl.col('tb_count').fill_null(0).cast(pl.UInt8),
+        pl.col('Table').fill_null(0).cast(pl.UInt8)
+    ])
+
+    # Assert no columns start with 'ns_' or 'ew_'
     for col in df.columns:
         assert not (col.startswith('ns_') or col.startswith('ew_') or col.startswith('NS_') or col.startswith('EW_')), col
 
     assert len(df) > 0
-    return df.reset_index(drop=True)
+    return df
 
 
 # todo: use Augment_Metric_By_Suits or TuplesToSuits?
@@ -644,9 +515,9 @@ def augment_df(df,sd_cache_d):
     df['Direction_OnLead'] = df['Declarer_Direction'].map(mlBridgeLib.NextPosition)
     df['Direction_Dummy'] = df['Direction_OnLead'].map(mlBridgeLib.NextPosition)
     df['Direction_NotOnLead'] = df['Direction_Dummy'].map(mlBridgeLib.NextPosition)
-    df['OnLead'] = df.apply(lambda r: r['Player_Number_'+r['Direction_OnLead']], axis='columns') # todo: keep as lower case?
-    df['Dummy'] = df.apply(lambda r: r['Player_Number_'+r['Direction_Dummy']], axis='columns') # todo: keep as lower case?
-    df['NotOnLead'] = df.apply(lambda r: r['Player_Number_'+r['Direction_NotOnLead']], axis='columns') # todo: keep as lower case?
+    df['OnLead'] = df.apply(lambda r: r['Player_ID_'+r['Direction_OnLead']], axis='columns') # todo: keep as lower case?
+    df['Dummy'] = df.apply(lambda r: r['Player_ID_'+r['Direction_Dummy']], axis='columns') # todo: keep as lower case?
+    df['NotOnLead'] = df.apply(lambda r: r['Player_ID_'+r['Direction_NotOnLead']], axis='columns') # todo: keep as lower case?
 
     # hands
     df['hands'] = df['board_record_string'].map(mlBridgeLib.brs_to_hands)
@@ -728,7 +599,7 @@ def augment_df(df,sd_cache_d):
         matchpoint_ns_d[board] = board_mps_ns
     # validate boards are scored correctly
     for board,g in df.groupby('Board'):
-        for score_ns,match_points_ns in zip(g['Score_NS'],g['MatchPoints_NS'].astype('float32')):
+        for score_ns,match_points_ns in zip(g['Score_NS'],g['MP_NS'].astype('float32')):
             if matchpoint_ns_d[board][score_ns][3] != match_points_ns: # match_points_ns is a string because it might originally have AVG+ or AVG- etc.
                 print_to_log(logging.WARNING,f'Board {board} score {matchpoint_ns_d[board][score_ns][3]} tuple {matchpoint_ns_d[board][score_ns]} does not match matchpoint score {match_points_ns}') # ok if off by epsilon
 
@@ -745,7 +616,7 @@ def augment_df(df,sd_cache_d):
     df['Pct_Declarer'] = df.apply(lambda r: r['Pct_'+r['Pair_Declarer_Direction']], axis='columns')
     df['Pair_Number_Declarer'] = df.apply(lambda r: r['Pair_Number_'+r['Pair_Declarer_Direction']], axis='columns')
     df['Pair_Number_Defender'] = df.apply(lambda r: r['Pair_Number_'+r['Opponent_Pair_Direction']], axis='columns')
-    df['Number_Declarer'] = df.apply(lambda r: r['Player_Number_'+r['Declarer_Direction']], axis='columns') # todo: keep as lower case?
+    df['Number_Declarer'] = df.apply(lambda r: r['Player_ID_'+r['Declarer_Direction']], axis='columns') # todo: keep as lower case?
     df['Name_Declarer'] = df.apply(lambda r: r['Player_Name_'+r['Declarer_Direction']], axis='columns')
     # todo: drop either Tricks or Tricks_Declarer as they are invariant and duplicates
     df['Tricks_Declarer'] = df['Tricks'] # synonym for Tricks
@@ -763,7 +634,7 @@ def augment_df(df,sd_cache_d):
     df['DDScore_NS'] = df.apply(lambda r: 0 if r['Contract'] == 'PASS' else mlBridgeLib.score(r['BidLvl']-1, 'CDHSN'.index(r['BidSuit']), len(r['Dbl']), ('NSEW').index(r['Declarer_Direction']), r['Vul_Declarer'], r['DDTricks']-r['BidLvl']-6), axis='columns')
     df['DDScore_EW'] = -df['DDScore_NS']
     df['DDMPs_NS'] = df.apply(lambda r: mlBridgeLib.MatchPointScoreUpdate(r['DDScore_NS'],matchpoint_ns_d[r['Board']])[r['DDScore_NS']][3],axis='columns')
-    df['DDMPs_EW'] = df['Board_Top']-df['DDMPs_NS']
+    df['DDMPs_EW'] = df['MP_Top']-df['DDMPs_NS']
     df['DDPct_NS'] = df.apply(lambda r: mlBridgeLib.MatchPointScoreUpdate(r['DDScore_NS'],matchpoint_ns_d[r['Board']])[r['DDScore_NS']][4],axis='columns')
     df['DDPct_EW'] = 1-df['DDPct_NS']
 
@@ -783,7 +654,7 @@ def augment_df(df,sd_cache_d):
     if 'par' in df:
         df.drop(['par'],axis='columns',inplace=True)
     df['ParScore_MPs_NS'] = df.apply(lambda r: mlBridgeLib.MatchPointScoreUpdate(r['ParScore_NS'],matchpoint_ns_d[r['Board']])[r['ParScore_NS']][3],axis='columns')
-    df['ParScore_MPs_EW'] = df['Board_Top']-df['ParScore_MPs_NS']
+    df['ParScore_MPs_EW'] = df['MP_Top']-df['ParScore_MPs_NS']
     df['ParScore_Pct_NS'] = df.apply(lambda r: mlBridgeLib.MatchPointScoreUpdate(r['ParScore_NS'],matchpoint_ns_d[r['Board']])[r['ParScore_NS']][4],axis='columns')
     df['ParScore_Pct_EW'] = 1-df['ParScore_Pct_NS']
     df["ParScore_Declarer"] = df.apply(lambda r: r['ParScore_'+r['Pair_Declarer_Direction']], axis='columns')
@@ -802,9 +673,11 @@ def augment_df(df,sd_cache_d):
     df['Defender_NotOnLead_Rating'] = df.groupby('NotOnLead')['Defender_ParScore_GE'].transform('mean').astype('float32')
 
     # masterpoints columns
+    # note: looks like masterpoints column is no longer available so need to obsolete it. fake it with 500 for everyone.
     for d in mlBridgeLib.NESW:
-        df['mp_total_'+d.lower()] = df['mp_total_'+d.lower()].astype('float32')
-        df['mp_total_'+d.lower()] = df['mp_total_'+d.lower()].fillna(300) # unknown number of masterpoints. fill with 300.
+        #df['mp_total_'+d.lower()] = df['mp_total_'+d.lower()].astype('float32')
+        #df['mp_total_'+d.lower()] = df['mp_total_'+d.lower()].fillna(300) # unknown number of masterpoints. fill with 300.
+        df['mp_total_'+d.lower()] = 500 # todo: need to fake masterpoints because it's no longer available.
     df['MP_Sum_NS'] = df['mp_total_n']+df['mp_total_s']
     df['MP_Sum_EW'] = df['mp_total_e']+df['mp_total_w']
     df['MP_Geo_NS'] = df['mp_total_n']*df['mp_total_s']
@@ -834,7 +707,7 @@ def Augment_Single_Dummy(df,sd_cache_d,produce,matchpoint_ns_d):
     df['SDScore_NS'] = df.apply(Create_SD_Score,axis='columns').astype('int16') # Declarer's direction
     df['SDScore_EW'] = -df['SDScore_NS']
     df['SDMPs_NS'] = df.apply(lambda r: mlBridgeLib.MatchPointScoreUpdate(r['SDScore_NS'],matchpoint_ns_d[r['Board']])[r['SDScore_NS']][3],axis='columns')
-    df['SDMPs_EW'] = (df['Board_Top']-df['SDMPs_NS']).astype('float32')
+    df['SDMPs_EW'] = (df['MP_Top']-df['SDMPs_NS']).astype('float32')
     df['SDPct_NS'] = df.apply(lambda r: mlBridgeLib.MatchPointScoreUpdate(r['SDScore_NS'],matchpoint_ns_d[r['Board']])[r['SDScore_NS']][4],axis='columns')
     df['SDPct_EW'] = (1-df['SDPct_NS']).astype('float32')
     max_score_contract = df.apply(Create_SD_Score_Max,axis='columns')
@@ -843,7 +716,7 @@ def Augment_Single_Dummy(df,sd_cache_d,produce,matchpoint_ns_d):
     df['SDContract_Max'] = pd.Series([contract for score,contract in max_score_contract],dtype='string') # invariant
     del max_score_contract
     df['SDMPs_Max_NS'] = df.apply(lambda r: mlBridgeLib.MatchPointScoreUpdate(r['SDScore_Max_NS'],matchpoint_ns_d[r['Board']])[r['SDScore_Max_NS']][3],axis='columns')
-    df['SDMPs_Max_EW'] = (df['Board_Top']-df['SDMPs_Max_NS']).astype('float32')
+    df['SDMPs_Max_EW'] = (df['MP_Top']-df['SDMPs_Max_NS']).astype('float32')
     df['SDPct_Max_NS'] = df.apply(lambda r: mlBridgeLib.MatchPointScoreUpdate(r['SDScore_Max_NS'],matchpoint_ns_d[r['Board']])[r['SDScore_Max_NS']][4],axis='columns')
     df['SDPct_Max_EW'] = (1-df['SDPct_Max_NS']).astype('float32')
     df['SDScore_Diff_NS'] = (df['Score_NS']-df['SDScore_NS']).astype('int16')

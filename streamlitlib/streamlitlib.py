@@ -11,6 +11,7 @@ def print_to_log(level, *args):
 
 import streamlit as st
 import pandas as pd
+import polars as pl
 import matplotlib.pyplot as plt
 import seaborn as sns
 from st_aggrid import GridOptionsBuilder, AgGrid, GridUpdateMode, DataReturnMode, ColumnsAutoSizeMode, AgGridTheme, JsCode
@@ -142,6 +143,10 @@ def plot_heatmap(cross_table, fmt='.2f', xlabel=None, ylabel=None, zlabel=None, 
 # st.table has huge row size.
 def ShowDataFrameTable(table_df,key=None,output_method='aggrid',color_column=None,ngroup_name=None,round=2,tooltips=None):
 
+    # seems like everthing requires a pandas dataframe. table_df.style() doesn't work with polars.
+    if isinstance(table_df, pl.DataFrame):
+        table_df = table_df.to_pandas()
+
     if output_method == 'table':
         st.table(table_df.style.format({col:'{:,.2f}' for col in table_df.select_dtypes('float')}).set_table_styles(style_table())) #,1600,500)
 
@@ -265,6 +270,9 @@ def markdown_to_paragraphs(md_string, styles):
 
 def dataframe_to_table(df):
     # Convert DataFrame to HTML
+
+    if isinstance(df, pl.DataFrame):
+        df = df.to_pandas() # doesn't handle native polars
     html_content = df.to_html(index=False) # index=False to omit index column
     
     # Parse HTML to extract table data
@@ -312,6 +320,8 @@ def create_pdf(pdf_assets, title, output_filename=None):
     
     for a in pdf_assets:
         # Convert Markdown string to reportlab paragraphs and add them to the story
+        if isinstance(a, pl.DataFrame):
+            a = a.to_pandas()
         if isinstance(a, str):
             if a.startswith("You:"):
                 story.append(HorizontalLine(doc.width))
@@ -319,10 +329,13 @@ def create_pdf(pdf_assets, title, output_filename=None):
             story.extend(markdown_to_paragraphs(a, styles))
         # Convert each DataFrame in the list to a reportlab table and add it to the story
         elif isinstance(a, pd.DataFrame):
-            print_to_log_info('a:',len(a),len(a.columns))
+            #print_to_log_info('a:',len(a),len(a.columns))
             if len(a.columns) == 1:
                 a = pd.concat([a,pd.Series('',name='',index=a.index)],axis='columns') # workaround: 1 column dataframes error out so append a blank column
             story.append(dataframe_to_table(a.iloc[0:30,0:11])) # take only first 30 rows and 12 columns
+            story.append(Spacer(1, 12))
+        elif isinstance(a, pl.DataFrame):
+            story.append(dataframe_to_table(a[:30,:11])) # take only first 30 rows and 12 columns
             story.append(Spacer(1, 12))
         else:
             assert False, f"Unknown asset type: {type(a)}"
